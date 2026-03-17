@@ -314,4 +314,66 @@ Format it as a clear markdown document that another Claude instance could read t
     }
     return null;
   }
+
+  // ── Subagents ──
+
+  getSubagents(workingDirectory?: string): Array<{name: string; description: string; path: string; scope: string; model: string; tools: string}> {
+    const agents: Array<{name: string; description: string; path: string; scope: string; model: string; tools: string}> = [];
+
+    // User agents
+    const userAgentsDir = path.join(CLAUDE_DIR, 'agents');
+    if (fs.existsSync(userAgentsDir)) {
+      this.scanAgentsDir(userAgentsDir, 'user', agents);
+    }
+
+    // Project agents
+    if (workingDirectory) {
+      const projectAgentsDir = path.join(workingDirectory, '.claude', 'agents');
+      if (fs.existsSync(projectAgentsDir)) {
+        this.scanAgentsDir(projectAgentsDir, 'project', agents);
+      }
+    }
+
+    return agents;
+  }
+
+  private scanAgentsDir(dir: string, scope: string, agents: Array<{name: string; description: string; path: string; scope: string; model: string; tools: string}>) {
+    try {
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.isFile() && entry.name.endsWith('.md')) {
+          const fullPath = path.join(dir, entry.name);
+          const content = fs.readFileSync(fullPath, 'utf-8');
+          const nameLine = content.match(/^name:\s*(.+)$/m);
+          const descLine = content.match(/^description:\s*["']?(.+?)["']?\s*$/m);
+          const modelLine = content.match(/^model:\s*(.+)$/m);
+          const toolsLine = content.match(/^tools:\s*(.+)$/m);
+          agents.push({
+            name: nameLine ? nameLine[1].trim() : entry.name.replace('.md', ''),
+            description: descLine ? descLine[1].trim() : '',
+            path: fullPath,
+            scope,
+            model: modelLine ? modelLine[1].trim() : 'inherit',
+            tools: toolsLine ? toolsLine[1].trim() : '',
+          });
+        }
+      }
+    } catch {}
+  }
+
+  createSubagent(name: string, content: string, scope: 'user' | 'project', workingDirectory?: string): void {
+    const dir = scope === 'user'
+      ? path.join(CLAUDE_DIR, 'agents')
+      : workingDirectory
+        ? path.join(workingDirectory, '.claude', 'agents')
+        : path.join(CLAUDE_DIR, 'agents'); // fallback to user
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, `${name}.md`), content, 'utf-8');
+  }
+
+  deleteFile(filePath: string): void {
+    try {
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    } catch {}
+  }
 }

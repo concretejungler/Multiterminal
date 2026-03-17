@@ -138,8 +138,13 @@ export function registerIpcHandlers(window: BrowserWindow): void {
 
   // Create folder on desktop and return its path
   ipcMain.handle('dialog:create-desktop-folder', async (_, folderName: string) => {
+    // Sanitize folder name — strip path separators and ..
+    const sanitized = folderName.replace(/[\\\/]/g, '-').replace(/\.\./g, '').trim();
+    if (!sanitized) return null;
     const desktop = path.join(process.env.USERPROFILE || process.env.HOME || '', 'Desktop');
-    const folderPath = path.join(desktop, folderName);
+    const folderPath = path.resolve(desktop, sanitized);
+    // Verify resolved path is still inside Desktop
+    if (!folderPath.startsWith(desktop + path.sep) && folderPath !== desktop) return null;
     if (!fs.existsSync(folderPath)) {
       fs.mkdirSync(folderPath, { recursive: true });
     }
@@ -228,6 +233,56 @@ export function registerIpcHandlers(window: BrowserWindow): void {
     const config = instanceConfigs.get(instanceId);
     if (!config) return null;
     return configManager.getSessionMemory(config.workingDirectory);
+  });
+
+  // Subagents
+  ipcMain.handle('config:get-subagents', async () => {
+    const firstConfig = instanceConfigs.values().next().value;
+    const workDir = firstConfig?.workingDirectory || '';
+    return configManager.getSubagents(workDir);
+  });
+
+  ipcMain.handle('config:create-subagent', async (_, name: string, content: string, scope: 'user' | 'project') => {
+    const firstConfig = instanceConfigs.values().next().value;
+    const workDir = firstConfig?.workingDirectory || '';
+    configManager.createSubagent(name, content, scope, workDir);
+  });
+
+  ipcMain.handle('config:delete-file', async (_, filePath: string) => {
+    // Security: only allow deleting files in .claude directories
+    const resolved = path.resolve(filePath);
+    const home = process.env.USERPROFILE || process.env.HOME || '';
+    const claudeDir = path.join(home, '.claude');
+    const isClaudeFile = resolved.startsWith(claudeDir + path.sep);
+    const isProjectClaude = resolved.includes(path.sep + '.claude' + path.sep);
+    if (!isClaudeFile && !isProjectClaude) return;
+    configManager.deleteFile(filePath);
+  });
+
+  // /btw quick-ask — sends /btw command to the active PTY
+  ipcMain.handle('pty:btw', async (_, id: string, question: string) => {
+    ptyManager.write(id, `/btw ${question}\n`);
+  });
+
+  // Headless background task — spawns claude -p in a separate process
+  ipcMain.handle('pty:headless', async (_, config: { workingDirectory: string; prompt: string; allowedTools?: string[] }) => {
+    const { execFile } = require('child_process');
+    const { promisify } = require('util');
+    const execFileAsync = promisify(execFile);
+    try {
+      const args = ['-p', config.prompt, '--output-format', 'text'];
+      if (config.allowedTools && config.allowedTools.length > 0) {
+        args.push('--allowedTools', config.allowedTools.join(','));
+      }
+      const { stdout } = await execFileAsync('claude', args, {
+        cwd: config.workingDirectory,
+        timeout: 300000,
+        env: process.env,
+      });
+      return { success: true, output: stdout };
+    } catch (err: any) {
+      return { success: false, error: err.message, output: err.stdout || '' };
+    }
   });
 
   // Cleanup on app quit

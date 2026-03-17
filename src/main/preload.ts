@@ -100,4 +100,20 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('session:save-memory-prompt', instanceId),
   getSessionMemory: (instanceId: string) =>
     ipcRenderer.invoke('session:get-memory', instanceId),
+
+  // Subagents
+  getSubagents: () =>
+    ipcRenderer.invoke('config:get-subagents'),
+  createSubagent: (name: string, content: string, scope: 'user' | 'project') =>
+    ipcRenderer.invoke('config:create-subagent', name, content, scope),
+  deleteFile: (filePath: string) =>
+    ipcRenderer.invoke('config:delete-file', filePath),
+
+  // /btw quick-ask
+  sendBtw: (id: string, question: string) =>
+    ipcRenderer.invoke('pty:btw', id, question),
+
+  // Headless background task
+  runHeadless: (config: { workingDirectory: string; prompt: string; allowedTools?: string[] }) =>
+    ipcRenderer.invoke('pty:headless', config),
 });
