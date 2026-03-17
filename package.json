@@ -1,7 +1,8 @@
 {
   "name": "multiterminal",
   "version": "1.0.0",
-  "description": "",
+  "description": "Manage multiple Claude Code terminal instances in one desktop app",
+  "author": "concretejungler",
   "main": "dist/main/main/index.js",
   "scripts": {
     "dev": "concurrently \"npm run dev:renderer\" \"npm run dev:main\"",
@@ -12,7 +13,7 @@
     "build:renderer": "vite build",
     "build:main": "tsc -p tsconfig.main.json",
     "start": "electron .",
-    "package": "npm run build && electron-builder"
+    "package": "npm run build && electron-builder --win --config.directories.output=build-output"
   },
   "keywords": [],
   "author": "",
@@ -32,6 +33,20 @@
     "typescript": "^5.9.3",
     "vite": "^6.4.1",
     "wait-on": "^9.0.4"
+  },
+  "build": {
+    "appId": "com.multiterminal.app",
+    "productName": "Multiterminal",
+    "directories": {
+      "output": "build-output",
+      "buildResources": "assets"
+    },
+    "files": ["dist/**/*", "assets/**/*", "node_modules/**/*", "package.json"],
+    "asar": false,
+    "win": { "target": "dir" },
+    "npmRebuild": false,
+    "nodeGypRebuild": false,
+    "buildDependenciesFromSource": false
   },
   "dependencies": {
     "@xterm/addon-fit": "^0.11.0",

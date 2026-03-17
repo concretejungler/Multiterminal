@@ -83,7 +83,6 @@ function createWindow() {
   if (process.env.NODE_ENV === 'development') {
     debugLog('INFO', 'Loading dev server at http://localhost:5173');
     mainWindow.loadURL('http://localhost:5173');
-    mainWindow.webContents.openDevTools({ mode: 'bottom' });
   } else {
     mainWindow.loadFile(path.join(__dirname, '../../dist/renderer/index.html'));
   }
