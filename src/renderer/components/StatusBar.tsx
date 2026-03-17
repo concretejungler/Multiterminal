@@ -101,6 +101,16 @@ export function StatusBar({ instanceId }: StatusBarProps) {
       >
         {instance.soundEnabled ? '\uD83D\uDD14' : '\uD83D\uDD15'}
       </button>
+      <button
+        onClick={async () => {
+          const prompt = await window.api.saveSessionMemoryPrompt(instanceId);
+          if (prompt) window.api.sendInput(instanceId, prompt + '\n');
+        }}
+        className="text-xs text-gray-500 hover:text-gray-300 px-1"
+        title="Save session memory"
+      >
+        💾
+      </button>
     </div>
   );
 }
