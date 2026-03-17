@@ -1,4 +1,6 @@
-import { ipcMain, BrowserWindow, app } from 'electron';
+import { ipcMain, BrowserWindow, app, dialog } from 'electron';
+import path from 'path';
+import fs from 'fs';
 import { IPC, MAX_INSTANCES, WARN_INSTANCES } from '../shared/constants';
 import { PtyManager } from './pty-manager';
 import { QueueManager } from './queue-manager';
@@ -6,6 +8,7 @@ import { NotificationManager } from './notification-manager';
 import { GitManager } from './git-manager';
 import { SettingsStore } from './settings-store';
 import { ClipboardStore } from './clipboard-store';
+import { ConfigManager } from './config-manager';
 
 export function registerIpcHandlers(window: BrowserWindow): void {
   const settingsStore = new SettingsStore();
@@ -14,6 +17,7 @@ export function registerIpcHandlers(window: BrowserWindow): void {
   const notificationManager = new NotificationManager(window, settingsStore);
   const queueManager = new QueueManager(window, ptyManager, settingsStore, gitManager);
   const clipboardStore = new ClipboardStore();
+  const configManager = new ConfigManager();
 
   let instanceCount = 0;
   const instanceConfigs = new Map<string, { workingDirectory: string; skipPermissions: boolean }>();
@@ -118,6 +122,112 @@ export function registerIpcHandlers(window: BrowserWindow): void {
 
   ipcMain.handle('pty:force-idle', async (_, id) => {
     ptyManager.forceIdle(id);
+  });
+
+  // Folder picker dialog
+  ipcMain.handle('dialog:select-folder', async (_, defaultPath?: string) => {
+    const desktop = path.join(process.env.USERPROFILE || process.env.HOME || '', 'Desktop');
+    const result = await dialog.showOpenDialog(window, {
+      title: 'Select Working Directory',
+      defaultPath: defaultPath || desktop,
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    if (result.canceled || result.filePaths.length === 0) return null;
+    return result.filePaths[0];
+  });
+
+  // Create folder on desktop and return its path
+  ipcMain.handle('dialog:create-desktop-folder', async (_, folderName: string) => {
+    const desktop = path.join(process.env.USERPROFILE || process.env.HOME || '', 'Desktop');
+    const folderPath = path.join(desktop, folderName);
+    if (!fs.existsSync(folderPath)) {
+      fs.mkdirSync(folderPath, { recursive: true });
+    }
+    return folderPath;
+  });
+
+  // Config Manager — CLAUDE.md
+  ipcMain.handle('config:get-claude-md-files', async (_, instanceId?: string) => {
+    // Get working directory from instanceConfigs if instanceId provided
+    const workDir = instanceId ? instanceConfigs.get(instanceId)?.workingDirectory : undefined;
+    return configManager.getClaudeMdFiles(workDir);
+  });
+
+  ipcMain.handle('config:save-claude-md-file', async (_, filePath: string, content: string) => {
+    configManager.saveClaudeMdFile(filePath, content);
+  });
+
+  // Config Manager — Skills
+  ipcMain.handle('config:get-skills', async (_, instanceId?: string) => {
+    const workDir = instanceId ? instanceConfigs.get(instanceId)?.workingDirectory : undefined;
+    return configManager.getSkills(workDir);
+  });
+
+  ipcMain.handle('config:toggle-skill', async (_, skillPath: string, enabled: boolean, instanceId?: string) => {
+    // For now, skills are always enabled if discovered. This could be extended.
+    return;
+  });
+
+  // Config Manager — MCP Servers
+  ipcMain.handle('config:get-mcp-servers', async (_, instanceId?: string) => {
+    const workDir = instanceId ? instanceConfigs.get(instanceId)?.workingDirectory : undefined;
+    return configManager.getMcpServers(workDir);
+  });
+
+  ipcMain.handle('config:add-mcp-server', async (_, config: any) => {
+    if (config.scope === 'project') {
+      // Need a working directory - use the first instance's or a default
+      const firstConfig = instanceConfigs.values().next().value;
+      const workDir = firstConfig?.workingDirectory || '';
+      if (workDir) configManager.addMcpServerToProject(workDir, config);
+    } else {
+      configManager.addMcpServer(config);
+    }
+  });
+
+  ipcMain.handle('config:toggle-mcp-server', async (_, name: string, enabled: boolean, instanceId?: string) => {
+    return;
+  });
+
+  ipcMain.handle('config:remove-mcp-server', async (_, name: string, scope: string) => {
+    const firstConfig = instanceConfigs.values().next().value;
+    const workDir = firstConfig?.workingDirectory || '';
+    configManager.removeMcpServer(name, scope, workDir);
+  });
+
+  // Config Manager — Settings JSON
+  ipcMain.handle('config:get-claude-settings', async (_, scope: 'user' | 'project') => {
+    const firstConfig = instanceConfigs.values().next().value;
+    const workDir = firstConfig?.workingDirectory || '';
+    return configManager.getClaudeSettings(scope, workDir);
+  });
+
+  ipcMain.handle('config:save-claude-settings', async (_, scope: 'user' | 'project', content: string) => {
+    const firstConfig = instanceConfigs.values().next().value;
+    const workDir = firstConfig?.workingDirectory || '';
+    configManager.saveClaudeSettings(scope, content, workDir);
+  });
+
+  // Config Manager — Generic file ops
+  ipcMain.handle('config:read-file', async (_, filePath: string) => {
+    return configManager.readFile(filePath);
+  });
+
+  ipcMain.handle('config:save-file', async (_, filePath: string, content: string) => {
+    configManager.saveFile(filePath, content);
+  });
+
+  // Session Memory
+  ipcMain.handle('session:save-memory-prompt', async (_, instanceId: string) => {
+    const config = instanceConfigs.get(instanceId);
+    if (!config) return null;
+    return configManager.saveSessionMemory(config.workingDirectory);
+  });
+
+  ipcMain.handle('session:get-memory', async (_, instanceId: string) => {
+    const config = instanceConfigs.get(instanceId);
+    if (!config) return null;
+    return configManager.getSessionMemory(config.workingDirectory);
   });
 
   // Cleanup on app quit

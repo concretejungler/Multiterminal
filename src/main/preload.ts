@@ -64,4 +64,40 @@ contextBridge.exposeInMainWorld('api', {
   // Force idle
   forceIdle: (id: string) =>
     ipcRenderer.invoke('pty:force-idle', id),
+
+  // Dialog
+  selectFolder: (defaultPath?: string) =>
+    ipcRenderer.invoke('dialog:select-folder', defaultPath),
+  createDesktopFolder: (folderName: string) =>
+    ipcRenderer.invoke('dialog:create-desktop-folder', folderName),
+
+  // Config Manager
+  getClaudeMdFiles: (instanceId?: string) =>
+    ipcRenderer.invoke('config:get-claude-md-files', instanceId),
+  saveClaudeMdFile: (filePath: string, content: string) =>
+    ipcRenderer.invoke('config:save-claude-md-file', filePath, content),
+  getSkills: (instanceId?: string) =>
+    ipcRenderer.invoke('config:get-skills', instanceId),
+  toggleSkill: (skillPath: string, enabled: boolean, instanceId?: string) =>
+    ipcRenderer.invoke('config:toggle-skill', skillPath, enabled, instanceId),
+  getMcpServers: (instanceId?: string) =>
+    ipcRenderer.invoke('config:get-mcp-servers', instanceId),
+  addMcpServer: (config: any) =>
+    ipcRenderer.invoke('config:add-mcp-server', config),
+  toggleMcpServer: (name: string, enabled: boolean, instanceId?: string) =>
+    ipcRenderer.invoke('config:toggle-mcp-server', name, enabled, instanceId),
+  removeMcpServer: (name: string, scope: string) =>
+    ipcRenderer.invoke('config:remove-mcp-server', name, scope),
+  getClaudeSettings: (scope: string) =>
+    ipcRenderer.invoke('config:get-claude-settings', scope),
+  saveClaudeSettings: (scope: string, content: string) =>
+    ipcRenderer.invoke('config:save-claude-settings', scope, content),
+  readFile: (filePath: string) =>
+    ipcRenderer.invoke('config:read-file', filePath),
+  saveFile: (filePath: string, content: string) =>
+    ipcRenderer.invoke('config:save-file', filePath, content),
+  saveSessionMemoryPrompt: (instanceId: string) =>
+    ipcRenderer.invoke('session:save-memory-prompt', instanceId),
+  getSessionMemory: (instanceId: string) =>
+    ipcRenderer.invoke('session:get-memory', instanceId),
 });
