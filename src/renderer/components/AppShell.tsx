@@ -6,6 +6,8 @@ import { ClipboardHistory } from './ClipboardHistory';
 import { GitPushDialog } from './GitPushDialog';
 import { NewInstanceDialog } from './NewInstanceDialog';
 import { BtwBar } from './BtwBar';
+import { RemoteControlButton } from './RemoteControlButton';
+import { HelpPanel } from './HelpPanel';
 import { useInstancesStore } from '../store/instances';
 import { useSettingsStore } from '../store/settings';
 import { useClipboardStore } from '../store/clipboard';
@@ -88,6 +90,8 @@ export function AppShell() {
           <button onClick={() => activeInstance && setShowGitDialog(true)} className="w-8 h-8 text-gray-500 hover:text-gray-200 hover:bg-gray-800 rounded flex items-center justify-center text-sm" title="Push to GitHub">
             📤
           </button>
+          <RemoteControlButton />
+          <HelpPanel />
         </div>
       </div>
 
