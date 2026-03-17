@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
 import { TabBar } from './TabBar';
-import { SplitPaneContainer } from './SplitPaneContainer';
+import { TerminalPane } from './TerminalPane';
 import { SettingsSidebar } from './SettingsSidebar';
 import { ClipboardHistory } from './ClipboardHistory';
 import { GitPushDialog } from './GitPushDialog';
 import { NewInstanceDialog } from './NewInstanceDialog';
+import { BtwBar } from './BtwBar';
 import { useInstancesStore } from '../store/instances';
-import { useLayoutStore } from '../store/layout';
 import { useSettingsStore } from '../store/settings';
 import { useClipboardStore } from '../store/clipboard';
 import { Instance } from '../../shared/types';
@@ -19,8 +19,6 @@ export function AppShell() {
   const instances = useInstancesStore(s => s.instances);
   const activeId = useInstancesStore(s => s.activeInstanceId);
   const addInstance = useInstancesStore(s => s.addInstance);
-  const root = useLayoutStore(s => s.root);
-  const addPane = useLayoutStore(s => s.addPane);
   const sidebarOpen = useSettingsStore(s => s.sidebarOpen);
   const loadSettings = useSettingsStore(s => s.load);
   const loadClipboard = useClipboardStore(s => s.load);
@@ -36,7 +34,26 @@ export function AppShell() {
       }
     };
     window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
+
+    // Listen for subagent launch requests from ConfigPanel
+    const handleLaunchSubagent = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      const id = crypto.randomUUID();
+      const agentName = detail.agentName;
+      // Create instance - the PTY will be started with --agent flag
+      const inst: Instance = {
+        id, name: `Agent: ${agentName}`, workingDirectory: '',
+        skipPermissions: false, status: 'stopped', taskDescription: '',
+        progressPercent: null, planItems: [], queue: [], soundEnabled: true,
+      };
+      addInstance(inst);
+    };
+    window.addEventListener('launch-subagent', handleLaunchSubagent);
+
+    return () => {
+      window.removeEventListener('keydown', handler);
+      window.removeEventListener('launch-subagent', handleLaunchSubagent);
+    };
   }, []);
 
   const handleCreateInstance = (name: string, workingDirectory: string, skipPermissions: boolean) => {
@@ -47,7 +64,6 @@ export function AppShell() {
       planItems: [], queue: [], soundEnabled: true,
     };
     addInstance(instance);
-    addPane(id);
     setShowNewDialog(false);
   };
 
@@ -59,6 +75,7 @@ export function AppShell() {
 
   return (
     <div className="flex flex-col h-screen bg-gray-950">
+      {/* Top bar */}
       <div className="flex items-center">
         <div className="flex-1">
           <TabBar onNewInstance={() => setShowNewDialog(true)} />
@@ -67,15 +84,27 @@ export function AppShell() {
           <button onClick={toggleClipboard} className="w-8 h-8 text-gray-500 hover:text-gray-200 hover:bg-gray-800 rounded flex items-center justify-center text-sm" title="Paste History (Ctrl+Shift+V)">
             📋
           </button>
+          <BtwBar />
           <button onClick={() => activeInstance && setShowGitDialog(true)} className="w-8 h-8 text-gray-500 hover:text-gray-200 hover:bg-gray-800 rounded flex items-center justify-center text-sm" title="Push to GitHub">
             📤
           </button>
         </div>
       </div>
+
+      {/* Main content — single pane, switch by tabs */}
       <div className="flex flex-1 min-h-0">
         <div className="flex-1 min-w-0">
-          {root ? (
-            <SplitPaneContainer node={root} />
+          {activeId ? (
+            // Render all instances but only show the active one
+            // This keeps terminal state alive when switching tabs
+            Array.from(instances.values()).map(inst => (
+              <div
+                key={inst.id}
+                className={`h-full ${inst.id === activeId ? 'block' : 'hidden'}`}
+              >
+                <TerminalPane instanceId={inst.id} />
+              </div>
+            ))
           ) : (
             <div className="flex items-center justify-center h-full text-gray-600">
               <div className="text-center">
@@ -90,6 +119,8 @@ export function AppShell() {
         </div>
         {sidebarOpen && <SettingsSidebar />}
       </div>
+
+      {/* Overlays */}
       <ClipboardHistory onPaste={handlePaste} />
       {showNewDialog && (
         <NewInstanceDialog instanceCount={instances.size} onClose={() => setShowNewDialog(false)} onCreate={handleCreateInstance} />
