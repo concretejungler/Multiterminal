@@ -8,7 +8,7 @@ Multiterminal is an Electron desktop application that lets users run multiple Cl
 
 ## Goals
 
-1. Run N Claude Code instances in a single window with tabs
+1. Run multiple Claude Code instances in a single window with tabs (soft cap: 8 instances, warning at 6 — each Claude process is memory-heavy)
 2. Drag tabs to split into up to 4 resizable panes
 3. Track what each instance is doing (status, progress %, plan checklist)
 4. Queue commands per instance — auto-send when idle
@@ -38,8 +38,8 @@ Multiterminal is an Electron desktop application that lets users run multiple Cl
 ```
 Electron Main Process
 ├── WindowManager          — manages the single BrowserWindow
-├── PtyManager             — spawns/kills node-pty instances per Claude session
-├── QueueManager           — watches PTY output for idle, sends next queued command
+├── PtyManager             — spawns/kills node-pty instances, parses output for status/idle
+├── QueueManager           — watches idle state from PtyManager, sends next queued command
 ├── NotificationManager    — plays sounds, fires OS toasts
 ├── GitManager             — runs git commands for push-to-github
 ├── SettingsStore          — reads/writes electron-store (global + per-instance)
@@ -69,6 +69,8 @@ Electron Renderer Process (React)
 | `pty:input` | renderer → main | User keystrokes / queued commands |
 | `pty:resize` | renderer → main | Terminal resize events |
 | `pty:kill` | renderer → main | Kill Claude instance |
+| `pty:error` | main → renderer | PTY spawn failure or crash |
+| `pty:restart` | renderer → main | Restart a crashed/killed instance |
 | `pty:status` | main → renderer | Parsed status updates (task, progress) |
 | `queue:send-next` | main → renderer | Notify that next queued command was sent |
 | `notification:done` | main → renderer | Instance finished, sound played |
@@ -85,7 +87,7 @@ Electron Renderer Process (React)
 
 Single tab visible, full-width terminal pane. Tab bar across the top with:
 - Instance tabs showing name + status icon (⟳ working, ✓ idle, ⚠ error)
-- [+] button to create new instance
+- [+] button to create new instance (opens a quick dialog: instance name, working directory, permissions mode)
 - [⚙] button to open settings sidebar
 
 ### Split Mode
@@ -114,10 +116,18 @@ Top of each pane. Shows:
 - Bell icon to toggle sound for this instance
 - Instance name (editable on double-click)
 
-**Progress parsing:** Monitor Claude's terminal output for patterns like:
+**Progress parsing (best-effort):** Monitor Claude's terminal output (ANSI-stripped) for patterns:
 - Task/todo lists → count completed/total for percentage
 - "Working on...", "Creating...", "Running..." → extract task description
-- Idle detection: prompt returns with no pending output for 3+ seconds
+- **Fallback:** if no pattern matches, show "Working..." with an indeterminate spinner (no percentage)
+- Progress parsing is heuristic and may break across Claude Code versions — the UI must degrade gracefully to the fallback state
+
+**Idle detection:** All status parsing and idle detection runs in the **main process** (inside `PtyManager`/`QueueManager`), not in the renderer. Detection strategy:
+1. **Primary signal:** Monitor PTY output for the Claude Code prompt pattern (the `❯` or `$` prompt character after a blank line). Maintain a configurable regex list of known prompt patterns.
+2. **Secondary signal:** No PTY output for 5+ seconds after a burst of activity.
+3. **Debounce:** Both signals must hold for 2 seconds before declaring idle. This prevents false positives during tool calls, network pauses, or large file reads.
+4. **Permission prompt detection:** If output matches known permission prompt patterns ("Allow", "Deny", "Y/n"), mark the instance as "Waiting for input" (distinct from idle). Do NOT auto-send queued commands in this state — surface it to the user with a yellow ⚠ status icon.
+5. **Manual override:** User can click a "Mark as idle" button on any instance to force-trigger the queue, in case auto-detection fails.
 
 ### Terminal View
 
@@ -129,10 +139,11 @@ Top of each pane. Shows:
 
 ### Plan Checklist
 
-- Parsed from Claude's output when it creates plans, todos, or checklists
+- Parsed from Claude's ANSI-stripped output when it creates plans, todos, or checklists
 - Regex patterns match common formats: `- [ ]`, `- [x]`, numbered steps, "Step N:"
 - Read-only display (reflects Claude's progress, not user-editable)
 - Collapsible panel, default expanded
+- **Empty state:** when no plan is detected, show "No plan detected" with a subtle icon — don't show an empty panel
 
 ### Command Queue
 
@@ -168,16 +179,19 @@ Slides in from the right when ⚙ is clicked. Three sections:
 
 Two sub-panels: Skills and MCP Servers.
 
+**How it works:** Skills and MCP servers are configured at **instance launch time only**. The app reads Claude Code's config files (`~/.claude/settings.json`, project-level `.claude/settings.json`) to discover available skills and MCP servers. When launching a new instance, the app writes a temporary per-instance config that enables/disables the selected skills and MCP servers.
+
+**Changing mid-session:** If the user changes skill/MCP toggles for a running instance, show an info banner: "Changes will apply when this instance restarts." Provide a [Restart Instance] button that kills the PTY and respawns with the new config. Queue state is preserved across restarts.
+
 **Global defaults:**
 - Toggle-all switch at the top
 - Individual toggles for each skill and MCP server
-- Skills and MCP servers are discovered by reading Claude Code's configuration
+- Skills and MCP servers are discovered by reading Claude Code's configuration files
 
 **Per-instance overrides:**
 - Dropdown to select an instance
 - "Use global defaults" checkbox (default: checked)
 - When unchecked, shows the same toggles, initialized from global but independently editable
-- Changes take effect on the next command sent to that instance (passed as CLI flags or config)
 
 ### Workflow Presets
 
@@ -228,16 +242,23 @@ Located in top bar. When clicked, opens GitPushDialog:
 5. [Commit & Push] button
 6. Shows progress, then success/failure toast
 
+**Error handling:**
+- **No git repo:** toast error "No git repository found in working directory"
+- **Merge conflicts:** toast error with "Open terminal" action to resolve manually
+- **Auth failure:** toast error "Git authentication failed — check SSH keys or token"
+- **Remote rejection:** toast error with details from git stderr
+- All errors are non-blocking — the dialog closes and the user can retry
+
 ### Queue Integration
 
-"Push to GitHub" can also be added as a queue command in any instance — it will run the git workflow when the instance goes idle.
+"Push to GitHub" can be added as a special queue entry (not a text command). When the instance goes idle and this entry is next in the queue, it auto-executes using the **default** settings: current branch, auto-generated commit message. The user can configure defaults in Global Settings → GitHub. If git push fails (merge conflict, auth error, no repo), it shows an error toast and skips to the next queue entry — it does NOT block the queue.
 
 ## Sound & Notifications
 
 ### Sounds
 
 - Default: subtle chime when an instance goes idle after working
-- Configurable: chime / bell / ding / custom file
+- Configurable: chime / bell / ding (3 bundled sounds, no custom file support in v1)
 - Volume slider in global settings
 - Per-instance mute toggle (bell icon in status bar)
 - Global mute button in top bar
@@ -308,9 +329,7 @@ multiterminal/
 │   │   │   └── GitPushDialog.tsx   — git push modal
 │   │   └── hooks/
 │   │       ├── useTerminal.ts      — xterm.js lifecycle
-│   │       ├── usePty.ts           — IPC communication with PTY
-│   │       ├── useIdleDetection.ts — detect when Claude is idle
-│   │       └── useStatusParser.ts  — parse Claude output for status
+│   │       └── usePty.ts           — IPC communication with PTY (receives parsed status from main)
 │   └── shared/                    — types shared between main/renderer
 │       ├── types.ts               — TypeScript interfaces
 │       └── constants.ts           — IPC channel names, defaults
@@ -324,6 +343,22 @@ multiterminal/
         └── specs/
             └── 2026-03-17-multiterminal-design.md
 ```
+
+## Error Handling
+
+### PTY Failures
+
+- **Claude not found:** On first launch and when spawning, check that `claude` is on PATH. If not, show a setup screen: "Claude Code CLI not found. Install it from https://claude.ai/download and restart."
+- **PTY crash:** If a PTY process exits unexpectedly, show a red banner in that pane: "Claude instance crashed (exit code N)." Provide [Restart] and [View Output] buttons. Queue state is preserved.
+- **Too many instances:** At 6 instances, show a yellow warning in the [+] dialog: "Running many Claude instances uses significant memory." Hard-block at 8 with "Maximum instances reached."
+
+### Startup Behavior
+
+On app launch:
+- Restore window size, position, and pane layout from `window-state.json`
+- Do NOT auto-restart previous Claude instances — start with empty tabs
+- Show a welcome state: "Click [+] to start a new Claude instance"
+- If the user had saved queues from a previous session, those are restored when the instance is manually recreated in the same working directory
 
 ## Non-Goals (v1)
 
