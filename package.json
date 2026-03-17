@@ -43,7 +43,20 @@
     },
     "files": ["dist/**/*", "assets/**/*", "node_modules/**/*", "package.json"],
     "asar": false,
-    "win": { "target": "dir" },
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Multiterminal",
+      "installerIcon": null,
+      "uninstallerIcon": null,
+      "menuCategory": false
+    },
     "npmRebuild": false,
     "nodeGypRebuild": false,
     "buildDependenciesFromSource": false
