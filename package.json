@@ -1,7 +1,8 @@
 {
   "name": "multiterminal",
   "version": "1.0.0",
-  "description": "",
+  "description": "Manage multiple Claude Code terminal instances in one desktop app",
+  "author": "concretejungler",
   "main": "dist/main/main/index.js",
   "scripts": {
     "dev": "concurrently \"npm run dev:renderer\" \"npm run dev:main\"",

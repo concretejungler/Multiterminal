@@ -6,10 +6,11 @@ directories:
 files:
   - dist/**/*
   - assets/**/*
+  - node_modules/**/*
+  - package.json
+asar: false
 win:
-  target: nsis
-  icon: assets/icon.ico
-nsis:
-  oneClick: false
-  perMachine: false
-  allowToChangeInstallationDirectory: true
+  target: dir
+npmRebuild: false
+nodeGypRebuild: false
+buildDependenciesFromSource: false
