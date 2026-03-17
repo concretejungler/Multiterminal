@@ -11,30 +11,26 @@ interface Skill {
   content?: string;
 }
 
-interface SkillsTabProps {
-  instanceId?: string;
-}
-
-export function SkillsTab({ instanceId }: SkillsTabProps) {
+export function SkillsTab() {
   const [skills, setSkills] = useState<Skill[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingSkill, setEditingSkill] = useState<Skill | null>(null);
   const [editContent, setEditContent] = useState('');
   const [filter, setFilter] = useState('');
 
-  useEffect(() => { loadSkills(); }, [instanceId]);
+  useEffect(() => { loadSkills(); }, []);
 
   const loadSkills = async () => {
     setLoading(true);
     try {
-      const result = await window.api.getSkills(instanceId);
+      const result = await window.api.getSkills();
       setSkills(result || []);
     } catch { setSkills([]); }
     setLoading(false);
   };
 
   const toggleSkill = async (skill: Skill) => {
-    await window.api.toggleSkill(skill.path, !skill.enabled, instanceId);
+    await window.api.toggleSkill(skill.path, !skill.enabled, undefined);
     loadSkills();
   };
 

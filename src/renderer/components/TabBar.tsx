@@ -1,6 +1,8 @@
 import { useInstancesStore } from '../store/instances';
 import { useSettingsStore } from '../store/settings';
 
+declare const window: Window & { api: any };
+
 interface TabBarProps {
   onNewInstance: () => void;
 }
@@ -37,7 +39,7 @@ export function TabBar({ onNewInstance }: TabBarProps) {
           <span className={`text-xs ${statusColor(inst.status)}`}>{statusIcon(inst.status)}</span>
           <span className="truncate max-w-[120px]">{inst.name}</span>
           <button
-            onClick={e => { e.stopPropagation(); removeInstance(inst.id); }}
+            onClick={e => { e.stopPropagation(); window.api.killPty(inst.id); removeInstance(inst.id); }}
             className="text-gray-600 hover:text-red-400 opacity-0 group-hover:opacity-100 ml-1"
           >
             ✕

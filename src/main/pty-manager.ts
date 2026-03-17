@@ -1,8 +1,16 @@
 import * as pty from 'node-pty';
 import { BrowserWindow } from 'electron';
 import stripAnsi from 'strip-ansi';
+import fs from 'fs';
+import path from 'path';
 import { IPC, PROMPT_PATTERNS, PERMISSION_PATTERNS, STATUS_PATTERNS, IDLE_DEBOUNCE_MS, IDLE_SILENCE_MS } from '../shared/constants';
 import { PlanItem } from '../shared/types';
+
+const logFile = path.join(process.env.USERPROFILE || process.env.HOME || '.', 'Desktop', 'multiterminal-debug.log');
+function debugLog(level: string, ...args: any[]) {
+  const msg = `[${new Date().toISOString()}] [PTY] [${level}] ${args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ')}\n`;
+  try { fs.appendFileSync(logFile, msg); } catch {}
+}
 
 interface PtyInstance {
   pty: pty.IPty;
@@ -37,26 +45,49 @@ export class PtyManager {
   }
 
   spawn(id: string, workingDirectory: string, skipPermissions: boolean): void {
-    const args = skipPermissions ? ['--dangerously-skip-permissions'] : [];
+    // On Windows, spawn through the system shell so PATH resolution works
+    // and the user gets a real terminal experience
+    const isWindows = process.platform === 'win32';
+    const shell = isWindows
+      ? process.env.COMSPEC || 'cmd.exe'
+      : process.env.SHELL || '/bin/bash';
+    const cwd = workingDirectory || process.env.USERPROFILE || process.env.HOME || '.';
+
+    // Prevent duplicate spawn for same ID
+    if (this.instances.has(id)) {
+      debugLog('WARN', `PTY already exists for id: ${id}, skipping spawn`);
+      return;
+    }
+
+    debugLog('INFO', `Spawning shell: ${shell}, cwd: ${cwd}, skipPermissions: ${skipPermissions}`);
 
     let ptyProcess: pty.IPty;
     try {
-      ptyProcess = pty.spawn('claude', args, {
+      ptyProcess = pty.spawn(shell, [], {
         name: 'xterm-256color',
         cols: 120,
         rows: 30,
-        cwd: workingDirectory || process.env.HOME || process.env.USERPROFILE || '.',
+        cwd,
         env: process.env as Record<string, string>,
       });
+      debugLog('INFO', `PTY spawned successfully, pid: ${ptyProcess.pid}`);
     } catch (err: any) {
-      this.window.webContents.send(IPC.PTY_ERROR, id, {
+      debugLog('ERROR', `PTY spawn failed: ${err.message}`, err.stack);
+      this.safeSend(IPC.PTY_ERROR, id, {
         type: 'spawn-failed',
-        message: err.message?.includes('ENOENT')
-          ? 'Claude Code CLI not found. Install it and restart.'
-          : err.message,
+        message: err.message,
       });
       return;
     }
+
+    // Auto-send the claude command after shell starts
+    const claudeCmd = skipPermissions
+      ? 'claude --dangerously-skip-permissions'
+      : 'claude';
+    debugLog('INFO', `Will auto-send: ${claudeCmd}`);
+    setTimeout(() => {
+      ptyProcess.write(claudeCmd + '\r');
+    }, 500);
 
     const instance: PtyInstance = {
       pty: ptyProcess,
@@ -77,15 +108,16 @@ export class PtyManager {
       if (instance.outputBuffer.length > 10000) {
         instance.outputBuffer = instance.outputBuffer.slice(-5000);
       }
-      this.window.webContents.send(IPC.PTY_DATA, id, data);
+      this.safeSend(IPC.PTY_DATA, id, data);
       this.parseStatus(instance);
     });
 
     ptyProcess.onExit(({ exitCode }) => {
+      debugLog('INFO', `PTY exited, id: ${id}, exitCode: ${exitCode}`);
       instance.status = 'stopped';
       this.clearTimers(instance);
       if (exitCode !== 0) {
-        this.window.webContents.send(IPC.PTY_ERROR, id, {
+        this.safeSend(IPC.PTY_ERROR, id, {
           type: 'crash',
           exitCode,
           message: `Claude instance crashed (exit code ${exitCode})`,
@@ -172,8 +204,16 @@ export class PtyManager {
     instance.silenceTimer = null;
   }
 
+  private safeSend(channel: string, ...args: any[]): void {
+    try {
+      if (this.window && !this.window.isDestroyed() && this.window.webContents && !this.window.webContents.isDestroyed()) {
+        this.window.webContents.send(channel, ...args);
+      }
+    } catch {}
+  }
+
   private sendStatusUpdate(instance: PtyInstance): void {
-    this.window.webContents.send(IPC.PTY_STATUS, instance.id, {
+    this.safeSend(IPC.PTY_STATUS, instance.id, {
       status: instance.status,
       taskDescription: instance.taskDescription,
       progressPercent: instance.progressPercent,

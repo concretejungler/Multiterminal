@@ -2,18 +2,14 @@ import { useState, useEffect } from 'react';
 
 declare const window: Window & { api: any };
 
-interface SettingsTabProps {
-  instanceId?: string;
-}
-
-export function SettingsTab({ instanceId }: SettingsTabProps) {
+export function SettingsTab() {
   const [settingsJson, setSettingsJson] = useState('');
   const [scope, setScope] = useState<'user' | 'project'>('project');
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  useEffect(() => { loadSettings(); }, [scope, instanceId]);
+  useEffect(() => { loadSettings(); }, [scope]);
 
   const loadSettings = async () => {
     try {

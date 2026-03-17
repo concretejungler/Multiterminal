@@ -13,11 +13,7 @@ interface McpServer {
   enabled: boolean;
 }
 
-interface McpServersTabProps {
-  instanceId?: string;
-}
-
-export function McpServersTab({ instanceId }: McpServersTabProps) {
+export function McpServersTab() {
   const [servers, setServers] = useState<McpServer[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
@@ -32,19 +28,19 @@ export function McpServersTab({ instanceId }: McpServersTabProps) {
   const [newEnv, setNewEnv] = useState('');
   const [newScope, setNewScope] = useState<'project' | 'user'>('project');
 
-  useEffect(() => { loadServers(); }, [instanceId]);
+  useEffect(() => { loadServers(); }, []);
 
   const loadServers = async () => {
     setLoading(true);
     try {
-      const result = await window.api.getMcpServers(instanceId);
+      const result = await window.api.getMcpServers();
       setServers(result || []);
     } catch { setServers([]); }
     setLoading(false);
   };
 
   const toggleServer = async (server: McpServer) => {
-    await window.api.toggleMcpServer(server.name, !server.enabled, instanceId);
+    await window.api.toggleMcpServer(server.name, !server.enabled, undefined);
     loadServers();
   };
 

@@ -37,7 +37,7 @@ export const IDLE_SILENCE_MS = 5000;
 export const PROMPT_PATTERNS = [
   /❯\s*$/m,
   /\$\s*$/m,
-  />\s*$/m,
+  /^[A-Z]:\\[^>]*>\s*$/m,  // Windows cmd prompt: C:\Users\foo>
 ];
 
 export const PERMISSION_PATTERNS = [

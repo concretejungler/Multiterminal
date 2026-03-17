@@ -2,10 +2,6 @@ import { useState, useEffect } from 'react';
 
 declare const window: Window & { api: any };
 
-interface ClaudeMdTabProps {
-  instanceId?: string;
-}
-
 interface MdFile {
   path: string;
   name: string;
@@ -13,7 +9,7 @@ interface MdFile {
   content: string;
 }
 
-export function ClaudeMdTab({ instanceId }: ClaudeMdTabProps) {
+export function ClaudeMdTab() {
   const [files, setFiles] = useState<MdFile[]>([]);
   const [activeFile, setActiveFile] = useState<string | null>(null);
   const [editContent, setEditContent] = useState('');
@@ -23,12 +19,12 @@ export function ClaudeMdTab({ instanceId }: ClaudeMdTabProps) {
 
   useEffect(() => {
     loadFiles();
-  }, [instanceId]);
+  }, []);
 
   const loadFiles = async () => {
     setLoading(true);
     try {
-      const result = await window.api.getClaudeMdFiles(instanceId);
+      const result = await window.api.getClaudeMdFiles(undefined);
       setFiles(result || []);
       if (result?.length > 0 && !activeFile) {
         setActiveFile(result[0].path);
